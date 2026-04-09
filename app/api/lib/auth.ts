@@ -7,7 +7,7 @@ const SESSION_TTL_SECONDS = Number(process.env.SESSION_TTL_SECONDS || 60 * 60 * 
 
 function getRequiredSecret(name: string): string {
   const value = process.env[name];
-  if (value && value.trim().length >= 32) return value;
+  if (value && value.trim().length >= 64) return value;
   throw new Error(`Missing or weak required secret: ${name}`);
 }
 

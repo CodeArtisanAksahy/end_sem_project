@@ -33,7 +33,9 @@ export function middleware(request: NextRequest) {
   }
 
   if (isApi) {
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
+    const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+    const realIp = request.headers.get('x-real-ip')?.trim();
+    const ip = realIp || forwardedFor || 'unknown';
     const rate = applyGlobalApiLimit(`api:${ip}:${pathname}`, 300, 15 * 60 * 1000);
     if (!rate.allowed) {
       return NextResponse.json({ error: 'Too many requests' }, { status: 429, headers: { 'Retry-After': String(rate.retryAfter) } });

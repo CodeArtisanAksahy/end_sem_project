@@ -80,6 +80,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Account temporarily locked due to failed logins. Try again later.' }, { status: 429 });
     }
 
+    if (user.lockUntil && user.lockUntil.getTime() <= now.getTime()) {
+      user.lockUntil = undefined;
+      user.failedLoginAttempts = 0;
+      await user.save();
+    }
+
     const validPassword = verifyPassword(password, user.passwordHash);
     if (!validPassword) {
       user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
