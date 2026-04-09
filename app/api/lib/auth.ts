@@ -13,7 +13,9 @@ function getRequiredSecret(name: string): string {
     throw new Error(`Missing or weak required secret: ${name}`);
   }
 
-  return `${name}_development_only_fallback_change_me_1234567890`;
+  const fallback = crypto.randomBytes(32).toString('hex');
+  console.warn(`[SECURITY] Using development fallback secret for ${name}. Configure ${name} in environment variables.`);
+  return fallback;
 }
 
 const TOKEN_PEPPER = getRequiredSecret('AUTH_TOKEN_PEPPER');
@@ -91,5 +93,17 @@ export function isStrongPassword(password: string): boolean {
 }
 
 export function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (typeof email !== 'string') return false;
+  if (email.length < 5 || email.length > 254) return false;
+  if (email.includes(' ') || !email.includes('@')) return false;
+
+  const atIndex = email.lastIndexOf('@');
+  if (atIndex <= 0 || atIndex === email.length - 1) return false;
+
+  const localPart = email.slice(0, atIndex);
+  const domainPart = email.slice(atIndex + 1);
+  if (!localPart || !domainPart || !domainPart.includes('.')) return false;
+  if (domainPart.startsWith('.') || domainPart.endsWith('.')) return false;
+
+  return true;
 }
