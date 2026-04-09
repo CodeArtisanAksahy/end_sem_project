@@ -1,12 +1,28 @@
 import { User } from '../models/user.model';
 import { createAuthError } from '../utils/errors';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
+
+const getRequiredEnv = (name: string) => {
+  const value = process.env[name];
+  if (!value) {
+    throw createAuthError(`${name} is not configured`, 500);
+  }
+  return value;
+};
+
+const createOtp = () => String(crypto.randomInt(100000, 1000000));
 
 export const registerUser = async (data: any) => {
   const existingUser = await User.findOne({ email: data.email });
-  if (existingUser) throw createAuthError('Email already exists');
+  if (existingUser) throw createAuthError('Email already exists', 409);
 
-  const user = await User.create({ ...data, otp: '123456' }); // MOCK OTP FOR DEMO
+  const user = await User.create({
+    ...data,
+    otp: createOtp(),
+    otpExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+    isVerified: false,
+  });
   // TO DO: Dispatch email via BullMQ -> Nodemailer
   return { id: user._id, email: user.email, name: user.name };
 };
@@ -17,8 +33,15 @@ export const loginUser = async ({ email, password }: any) => {
     throw createAuthError('Invalid credentials');
   }
 
-  const token = jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET || 'secret', { expiresIn: '1h' });
-  const refreshToken = jwt.sign({ id: user._id }, process.env.REFRESH_TOKEN_SECRET || 'r_secret', { expiresIn: '7d' });
+  if (!user.isVerified) {
+    throw createAuthError('Email verification required', 403);
+  }
+
+  const jwtSecret = getRequiredEnv('JWT_SECRET');
+  const refreshTokenSecret = getRequiredEnv('REFRESH_TOKEN_SECRET');
+
+  const token = jwt.sign({ id: user._id, role: user.role }, jwtSecret, { expiresIn: '1h' });
+  const refreshToken = jwt.sign({ id: user._id }, refreshTokenSecret, { expiresIn: '7d' });
 
   return { token, refreshToken, user: { id: user._id, email: user.email, role: user.role } };
 };

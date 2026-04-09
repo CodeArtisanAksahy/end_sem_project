@@ -7,6 +7,34 @@ import mongoose, { Schema, Document, Model } from "mongoose";
 const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/wellness";
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 
+function isPrivateHost(host: string): boolean {
+  const normalized = host.toLowerCase();
+  if (normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1") return true;
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // IPv6 ULA fc00::/7
+  if (normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb")) return true; // IPv6 link-local fe80::/10
+  if (/^10\./.test(normalized)) return true;
+  if (/^192\.168\./.test(normalized)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized)) return true;
+  if (normalized.endsWith(".internal") || normalized.endsWith(".local")) return true;
+  return false;
+}
+
+function assertProductionDbSafety() {
+  if (process.env.NODE_ENV !== "production") return;
+  if (process.env.DB_ALLOW_PUBLIC_ACCESS === "true") return;
+
+  try {
+    const hostMatch = MONGODB_URI.match(/mongodb(?:\+srv)?:\/\/(?:[^@/]+@)?([^/?]+)/i);
+    if (!hostMatch) return;
+    const host = hostMatch[1].split(",")[0].split(":")[0].trim().toLowerCase();
+    if (!isPrivateHost(host)) {
+      throw new Error("Refusing DB connection: host appears publicly routable. Set DB_ALLOW_PUBLIC_ACCESS=true only if network controls are in place.");
+    }
+  } catch (err) {
+    throw err;
+  }
+}
+
 // ========== CONNECTION ==========
 let isConnected = false;
 let connectionAttempted = false;
@@ -17,11 +45,12 @@ export async function connectDB(): Promise<boolean> {
 
   connectionAttempted = true;
   try {
+    assertProductionDbSafety();
     await mongoose.connect(MONGODB_URI, {
       serverSelectionTimeoutMS: 3000,
     });
     isConnected = true;
-    console.log("[MongoDB] Connected to", MONGODB_URI);
+    console.log("[MongoDB] Connected");
     return true;
   } catch (err) {
     console.log("[MongoDB] Not available — using in-memory store. To enable MongoDB, run: mongod");
@@ -99,6 +128,16 @@ export interface IUser extends Document {
   email: string;
   name: string;
   passwordHash: string;
+  emailVerified: boolean;
+  emailVerificationTokenHash?: string;
+  emailVerificationExpiresAt?: Date;
+  passwordResetTokenHash?: string;
+  passwordResetExpiresAt?: Date;
+  failedLoginAttempts: number;
+  lockUntil?: Date;
+  sessionTokenHash?: string;
+  sessionExpiresAt?: Date;
+  lastLoginAt?: Date;
   joinedDate: Date;
   settings: {
     darkMode: boolean;
@@ -110,6 +149,16 @@ const UserSchema = new Schema<IUser>({
   email: { type: String, required: true, unique: true },
   name: { type: String, required: true },
   passwordHash: { type: String, required: true },
+  emailVerified: { type: Boolean, default: false },
+  emailVerificationTokenHash: { type: String },
+  emailVerificationExpiresAt: { type: Date },
+  passwordResetTokenHash: { type: String },
+  passwordResetExpiresAt: { type: Date },
+  failedLoginAttempts: { type: Number, default: 0 },
+  lockUntil: { type: Date },
+  sessionTokenHash: { type: String },
+  sessionExpiresAt: { type: Date },
+  lastLoginAt: { type: Date },
   joinedDate: { type: Date, default: Date.now },
   settings: {
     darkMode: { type: Boolean, default: false },

@@ -1,13 +1,25 @@
 import { NextResponse } from "next/server";
 import { getStatsData, getStore, getMoodHistory, getMLFormattedData, getSleepLogs } from "../lib/store";
-import { connectDB, MoodModel, SessionModel, callMLService, checkMLService } from "../lib/mongodb";
+import { callMLService, checkMLService } from "../lib/mongodb";
 import { geminiInsights, geminiWellnessScore, geminiExerciseRecommendation } from "../lib/gemini";
+import { requireAuthenticatedUser } from "../lib/auth";
+import { applyRateLimit, getClientIp } from "../lib/rate-limit";
+import { logApiError, logSuspiciousTraffic } from "../lib/security-log";
 
 const MOOD_SCORES: Record<string, number> = {
   Radiant: 95, Calm: 75, Okay: 50, Tired: 30, Anxious: 20, Stressed: 10,
 };
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authUser = await requireAuthenticatedUser();
+  if (!authUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const ip = getClientIp(request);
+  const rate = applyRateLimit(`stats:get:${ip}:${authUser._id.toString()}`, 120, 15 * 60 * 1000);
+  if (!rate.allowed) {
+    logSuspiciousTraffic({ ip, path: "/api/stats", reason: "stats_rate_limited" });
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
   const baseStats = getStatsData();
   const store = getStore();
   const recentMoods = getMoodHistory(14);
@@ -68,8 +80,8 @@ export async function GET() {
     geminiAiInsights = gInsights;
     geminiWellness = gWellness;
     geminiRecs = gRecs;
-  } catch (err) {
-    console.error("[Stats] Gemini layer error:", err);
+  } catch (err: any) {
+    logApiError({ path: "/api/stats", method: "GET", message: err?.message || "Gemini layer error" });
   }
 
   // ===== BUILD RESPONSE =====

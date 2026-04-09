@@ -3,10 +3,15 @@
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const GEMINI_API_KEY = "AIzaSyDHK3MGE9Q9ULhy44fVBnVNzqYUx4JcJZY";
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+function getGeminiModel() {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) {
+    throw new Error("GEMINI_API_KEY is not configured");
+  }
 
-const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const genAI = new GoogleGenerativeAI(key);
+  return genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+}
 
 // ========== SYSTEM PROMPTS ==========
 
@@ -56,6 +61,7 @@ export async function geminiChat(
   }
 ): Promise<string> {
   try {
+    const model = getGeminiModel();
     const contextStr = buildContextString(context);
 
     const chat = model.startChat({
@@ -91,6 +97,7 @@ export async function geminiInsights(
   count: number = 4
 ): Promise<any[]> {
   try {
+    const model = getGeminiModel();
     const prompt = `${INSIGHTS_SYSTEM_PROMPT}
 
 Here is the user's wellness data:
@@ -137,6 +144,7 @@ export async function geminiExerciseRecommendation(
   }
 ): Promise<any> {
   try {
+    const model = getGeminiModel();
     const hour = new Date().getHours();
     const timeOfDay = hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening";
 
@@ -184,6 +192,7 @@ export async function geminiDashboardSummary(
   }
 ): Promise<string> {
   try {
+    const model = getGeminiModel();
     const prompt = `You are a wellness AI. Given this user's data, write a single personalized insight sentence (max 30 words) for their dashboard. Be warm, specific, and actionable.
 
 Data:
@@ -212,6 +221,7 @@ export async function geminiWellnessScore(
   }
 ): Promise<any> {
   try {
+    const model = getGeminiModel();
     const prompt = `You are a wellness scoring AI. Analyze this user data and return a wellness assessment.
 
 Data:
