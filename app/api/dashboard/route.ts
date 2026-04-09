@@ -1,12 +1,23 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { getDashboardData, getStore, getMLFormattedData, getDataCollectionSummary, getStatsData, getMoodHistory, getSleepLogs } from "../lib/store";
-import { connectDB, MoodModel, SessionModel, SleepLogModel, WellnessProfileModel, callMLService, checkMLService, getMongoStatus } from "../lib/mongodb";
+import { connectDB, MoodModel, SessionModel, SleepLogModel, WellnessProfileModel, callMLService, checkMLService } from "../lib/mongodb";
 import { geminiDashboardSummary, geminiWellnessScore, geminiInsights, geminiExerciseRecommendation } from "../lib/gemini";
+import { requireAuthenticatedUser } from "../lib/auth";
+import { applyRateLimit, getClientIp } from "../lib/rate-limit";
+import { logApiError, logSuspiciousTraffic } from "../lib/security-log";
 
-export async function GET() {
-  const cookieStore = await cookies();
-  const userId = cookieStore.get("wellness_userId")?.value || "user_001";
+export async function GET(request: Request) {
+  const authUser = await requireAuthenticatedUser();
+  if (!authUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const ip = getClientIp(request);
+  const rate = applyRateLimit(`dashboard:get:${ip}:${authUser._id.toString()}`, 120, 15 * 60 * 1000);
+  if (!rate.allowed) {
+    logSuspiciousTraffic({ ip, path: "/api/dashboard", reason: "dashboard_rate_limited" });
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
+  const userId = authUser._id.toString();
 
   // Get base dashboard data from in-memory store
   const data = getDashboardData();
@@ -188,7 +199,7 @@ export async function GET() {
 
       response.ml.available = true;
     } catch (err) {
-      console.error("[Dashboard] Gemini fallback error:", err);
+      logApiError({ path: "/api/dashboard", method: "GET", message: "Gemini fallback error" });
       // Ultimate fallback — static data
       response.ml.wellness = { resilience_score: stats.resilience.score };
       response.ml.insights = [{ text: stats.aiInsight, type: "general", priority: "medium" }];
@@ -199,4 +210,5 @@ export async function GET() {
 
   return NextResponse.json(response);
 }
+
 

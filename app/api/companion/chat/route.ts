@@ -10,6 +10,9 @@ import {
   getDataCollectionSummary,
 } from "../../lib/store";
 import { checkMLService, callMLService } from "../../lib/mongodb";
+import { requireAuthenticatedUser } from "../../lib/auth";
+import { applyRateLimit, getClientIp } from "../../lib/rate-limit";
+import { logApiError, logSuspiciousTraffic } from "../../lib/security-log";
 
 // ===== INTENT DETECTION =====
 type Intent =
@@ -532,7 +535,17 @@ function generateContextualResponse(
 
 // ===== API ROUTES =====
 
-export async function GET() {
+export async function GET(request: Request) {
+  const authUser = await requireAuthenticatedUser();
+  if (!authUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const ip = getClientIp(request);
+  const rate = applyRateLimit(`companion:get:${ip}:${authUser._id.toString()}`, 90, 15 * 60 * 1000);
+  if (!rate.allowed) {
+    logSuspiciousTraffic({ ip, path: "/api/companion/chat", reason: "companion_get_rate_limited" });
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
+
   return NextResponse.json({
     messages: getChatHistory(),
     suggestedPrompts: [
@@ -549,7 +562,17 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const ip = getClientIp(request);
+
   try {
+    const authUser = await requireAuthenticatedUser();
+    if (!authUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const rate = applyRateLimit(`companion:post:${ip}:${authUser._id.toString()}`, 45, 15 * 60 * 1000);
+    if (!rate.allowed) {
+      logSuspiciousTraffic({ ip, path: "/api/companion/chat", reason: "companion_post_rate_limited" });
+      return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+    }
     const { message } = await request.json();
     if (!message) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
@@ -593,7 +616,7 @@ export async function POST(request: Request) {
         wellnessProfile: store.wellnessProfile,
       });
     } catch (err) {
-      console.error("[Companion] Gemini call failed, using fallback:", err);
+      logApiError({ path: "/api/companion/chat", method: "POST", message: "Gemini call failed, using fallback" });
     }
 
     let responseText: string;
@@ -624,8 +647,8 @@ export async function POST(request: Request) {
       actions,
       ai_source: aiSource,
     });
-  } catch (e) {
-    console.error("[Companion Chat] Error:", e);
+  } catch (e: any) {
+    logApiError({ path: "/api/companion/chat", method: "POST", message: e?.message || "Failed to process message" });
     return NextResponse.json({ error: "Failed to process message" }, { status: 500 });
   }
 }

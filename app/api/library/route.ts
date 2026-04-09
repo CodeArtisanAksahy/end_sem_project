@@ -1,4 +1,7 @@
 import { NextResponse } from 'next/server';
+import { requireAuthenticatedUser } from '../lib/auth';
+import { applyRateLimit, getClientIp } from '../lib/rate-limit';
+import { logApiError, logSuspiciousTraffic } from '../lib/security-log';
 
 // Unique image URLs for each exercise — no duplicates
 const IMAGES = {
@@ -175,6 +178,15 @@ const exercises = [
 ];
 
 export async function GET(request: Request) {
+  const authUser = await requireAuthenticatedUser();
+  if (!authUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const ip = getClientIp(request);
+  const rate = applyRateLimit(`library:get:${ip}:${authUser._id.toString()}`, 120, 15 * 60 * 1000);
+  if (!rate.allowed) {
+    logSuspiciousTraffic({ ip, path: "/api/library", reason: "library_rate_limited" });
+    return NextResponse.json({ error: "Too many requests" }, { status: 429 });
+  }
   const { searchParams } = new URL(request.url);
   const category = searchParams.get('category');
   const query = searchParams.get('q');
@@ -211,8 +223,8 @@ export async function GET(request: Request) {
         sleepHours: store.wellnessProfile?.sleepHours || 7,
         activityLevel: store.wellnessProfile?.activityLevel || "Medium",
       });
-    } catch (err) {
-      console.error("[Library] Gemini recommendation error:", err);
+    } catch (err: any) {
+      logApiError({ path: "/api/library", method: "GET", message: err?.message || "Gemini recommendation error" });
     }
   }
 
