@@ -1,5 +1,5 @@
-export const createAuthError = (message: string) => {
+export const createAuthError = (message: string, statusCode = 401) => {
   const error: any = new Error(message);
-  error.statusCode = 401;
+  error.statusCode = statusCode;
   return error;
 };
