@@ -1,6 +1,7 @@
 import { User } from '../models/user.model';
 import { createAuthError } from '../utils/errors';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 
 const getRequiredEnv = (name: string) => {
   const value = process.env[name];
@@ -10,7 +11,7 @@ const getRequiredEnv = (name: string) => {
   return value;
 };
 
-const createOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+const createOtp = () => String(crypto.randomInt(100000, 1000000));
 
 export const registerUser = async (data: any) => {
   const existingUser = await User.findOne({ email: data.email });

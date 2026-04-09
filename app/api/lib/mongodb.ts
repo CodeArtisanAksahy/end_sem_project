@@ -8,13 +8,14 @@ const MONGODB_URI = process.env.MONGODB_URI || "mongodb://localhost:27017/wellne
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || "http://localhost:8000";
 
 function isPrivateHost(host: string): boolean {
-  if (host === "localhost" || host === "127.0.0.1" || host === "::1") return true;
-  if (host.startsWith("fc") || host.startsWith("fd")) return true; // IPv6 ULA fc00::/7
-  if (host.startsWith("fe8") || host.startsWith("fe9") || host.startsWith("fea") || host.startsWith("feb")) return true; // IPv6 link-local fe80::/10
-  if (/^10\./.test(host)) return true;
-  if (/^192\.168\./.test(host)) return true;
-  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return true;
-  if (host.endsWith(".internal") || host.endsWith(".local")) return true;
+  const normalized = host.toLowerCase();
+  if (normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1") return true;
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true; // IPv6 ULA fc00::/7
+  if (normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb")) return true; // IPv6 link-local fe80::/10
+  if (/^10\./.test(normalized)) return true;
+  if (/^192\.168\./.test(normalized)) return true;
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized)) return true;
+  if (normalized.endsWith(".internal") || normalized.endsWith(".local")) return true;
   return false;
 }
 

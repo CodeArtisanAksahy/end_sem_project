@@ -1,6 +1,8 @@
 type Bucket = { count: number; resetAt: number };
 
 const buckets = new Map<string, Bucket>();
+// NOTE: This in-memory limiter is suitable for single-instance deployments only.
+// Use a distributed backend (e.g., Redis) for production multi-instance consistency.
 
 export function applyRateLimit(key: string, maxRequests: number, windowMs: number) {
   const now = Date.now();

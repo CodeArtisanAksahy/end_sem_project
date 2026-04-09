@@ -8,14 +8,7 @@ const SESSION_TTL_SECONDS = Number(process.env.SESSION_TTL_SECONDS || 60 * 60 * 
 function getRequiredSecret(name: string): string {
   const value = process.env[name];
   if (value && value.trim().length >= 32) return value;
-
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error(`Missing or weak required secret: ${name}`);
-  }
-
-  const fallback = crypto.randomBytes(32).toString('hex');
-  console.warn(`[SECURITY] Using development fallback secret for ${name}. Configure ${name} in environment variables.`);
-  return fallback;
+  throw new Error(`Missing or weak required secret: ${name}`);
 }
 
 const TOKEN_PEPPER = getRequiredSecret('AUTH_TOKEN_PEPPER');
